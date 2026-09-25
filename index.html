@@ -400,7 +400,11 @@
                exitCell(p.active_stop, p.planned_stop) + exitCell(p.active_target, p.planned_target) +
                '<td class="mono" style="color:' + (pl >= 0 ? 'var(--good)' : 'var(--bad)') + '">' + fmtMoney(pl) + '</td></tr>' + thesis;
       }).join('');
-      box.innerHTML = '<h3><span class="swatch" style="background:' + SERIES_COLOR[track] + ';display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;"></span>' + SERIES_LABEL[track] + '</h3>' +
+      var coreInfo = state.accounts[track].core;
+      var coreLine = coreInfo ? '<div class="empty-note" style="font-style:normal;margin-bottom:8px;">Index core: <span class="mono">' +
+        coreInfo.qty + ' ' + coreInfo.symbol + '</span> · ' + fmtMoney(coreInfo.market_value) + ' (' + (coreInfo.pct_of_equity * 100).toFixed(0) +
+        '% of the account) — idle cash held in the S&amp;P 500, sold to fund the AI\'s trades</div>' : '';
+      box.innerHTML = '<h3><span class="swatch" style="background:' + SERIES_COLOR[track] + ';display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;"></span>' + SERIES_LABEL[track] + '</h3>' + coreLine +
         (positions.length
           ? '<table class="pos"><thead><tr><th>Symbol</th><th>Qty</th><th>Avg entry</th><th>Stop</th><th>Target</th><th>Unrealized</th></tr></thead><tbody>' + rows + '</tbody></table>'
           : '<div class="empty-note">No open positions right now.</div>');
