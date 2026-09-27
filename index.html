@@ -177,6 +177,12 @@
 </section>
 
 <section class="panel">
+  <h2>Strategy versions</h2>
+  <p class="panel-sub">Each version is scored from the day it started, against the S&amp;P 500 over the same days, using the bar written down in advance: at least 30 closed trades, an average trade of at least +0.3R, and a return at or above the S&amp;P 500's.</p>
+  <div class="metrics-grid" id="versions-grid"></div>
+</section>
+
+<section class="panel">
   <h2>Performance</h2>
   <p class="panel-sub">Closed trades only, measured in R — one R is the amount the stop-loss put at risk on that trade. Expectancy is the average R per trade: positive means the rules make money over time, whatever any one pick did.</p>
   <div class="metrics-grid" id="metrics-grid"></div>
@@ -445,6 +451,28 @@
     });
   }
 
+  function renderVersions() {
+    var el = document.getElementById('versions-grid');
+    if (!el) return;
+    el.innerHTML = '';
+    ['large', 'small'].forEach(function (track) {
+      var vs = state.accounts[track].versions || [];
+      var box = document.createElement('div');
+      box.className = 'metric-list';
+      var head = '<h3><span class="swatch" style="background:' + SERIES_COLOR[track] + ';display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;"></span>' + SERIES_LABEL[track] + '</h3>';
+      if (!vs.length) { box.innerHTML = head + '<div class="empty-note">No version history yet.</div>'; el.appendChild(box); return; }
+      var rows = vs.map(function (v) {
+        var pct = function (x) { return x === null || x === undefined ? '—' : fmtPct(x); };
+        var vsSpy = v.vs_spy === null || v.vs_spy === undefined ? '—' : ((v.vs_spy >= 0 ? '+' : '') + (v.vs_spy * 100).toFixed(2) + ' pts');
+        return '<tr><td>' + v.version + '<div class="thesis" style="font-size:0.75rem;color:var(--ink-muted)">' + v.from + (v.to ? ' → ' + v.to : ' → now') + '</div></td>' +
+          '<td class="mono">' + v.closed_trades + '</td><td class="mono">' + fmtR(v.expectancy_r) + '</td>' +
+          '<td class="mono">' + pct(v.account_return) + '</td><td class="mono">' + vsSpy + '</td><td>' + v.verdict + '</td></tr>';
+      }).join('');
+      box.innerHTML = head + '<table class="pos"><thead><tr><th>Version</th><th>Trades</th><th>Avg</th><th>Return</th><th>vs S&amp;P</th><th>Verdict</th></tr></thead><tbody>' + rows + '</tbody></table>';
+      el.appendChild(box);
+    });
+  }
+
   function allEntries() {
     return [].concat(
       state.trades.large.map(function (t) { return Object.assign({ track: 'large' }, t); }),
@@ -452,7 +480,8 @@
     ).sort(function (a, b) { return new Date(b.at) - new Date(a.at); });
   }
 
-  var ACTION_CHIP = { filled: 'good', target_hit: 'good', stopped_out: 'bad', closed_manual: 'neutral', closed_unknown: 'neutral' };
+  var ACTION_CHIP = { filled: 'good', target_hit: 'good', stopped_out: 'bad', closed_manual: 'neutral', closed_unknown: 'neutral',
+                     partial_exit: 'neutral', core_fill: 'neutral' };
   function statusChipClass(status) {
     if (status === 'submitted' || status === 'canceled') return 'good';
     if (status === 'blocked' || status === 'vetoed_by_risk_manager' || status === 'warning') return 'neutral';
@@ -521,6 +550,7 @@
     renderTiles();
     renderLegend();
     renderChart();
+    renderVersions();
     renderMetrics();
     renderPositions();
     renderCycleJournal();
