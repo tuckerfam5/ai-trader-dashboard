@@ -93,7 +93,9 @@
   .legend .item { display: flex; align-items: center; gap: 6px; color: var(--ink-muted); }
   .legend .swatch.line { width: 14px; height: 3px; border-radius: 2px; }
 
-  #chart-wrap { position: relative; width: 100%; overflow-x: auto; }
+  /* No overflow here: the SVG already scales to 100% width, and any
+     overflow value other than visible clips the hover tooltip at the edges. */
+  #chart-wrap { position: relative; width: 100%; }
   #chart { width: 100%; height: auto; display: block; }
   .crosshair-line { stroke: var(--ink-muted); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0; pointer-events: none; }
   .hover-tooltip {
@@ -374,8 +376,15 @@
         return '<div class="row"><span style="color:' + SERIES_COLOR[key] + '">' + SERIES_LABEL[key] + '</span><span class="mono">' + fmtPct(p.v) + '</span></div>';
       }).join('');
       tooltip.innerHTML = rows;
-      tooltip.style.left = (evt.clientX - wrap.getBoundingClientRect().left) + 'px';
-      tooltip.style.top = (evt.clientY - wrap.getBoundingClientRect().top) + 'px';
+      // The tooltip is centered on the cursor (translate -50%), so near the
+      // left or right edge half of it would hang outside the chart. Clamp its
+      // center so the whole box stays within the chart's width.
+      var wrapRect = wrap.getBoundingClientRect();
+      var half = tooltip.offsetWidth / 2 + 4;
+      var tx = evt.clientX - wrapRect.left;
+      tx = Math.max(half, Math.min(wrapRect.width - half, tx));
+      tooltip.style.left = tx + 'px';
+      tooltip.style.top = (evt.clientY - wrapRect.top) + 'px';
       tooltip.style.opacity = 1;
     });
     svg.addEventListener('mouseleave', function () {
