@@ -180,7 +180,7 @@
 
 <section class="panel">
   <h2>Strategy versions</h2>
-  <p class="panel-sub">Each version is scored from the day it started, against the S&amp;P 500 over the same days, using the bar written down in advance: at least 30 closed trades, an average trade of at least +0.3R, and a return at or above the S&amp;P 500's.</p>
+  <p class="panel-sub">Each trade counts toward the version that opened it, for its whole life, even if it closes after a newer version starts. The index fund's gain or loss counts toward whichever version was running at the time. So the versions add up to the account. Each is compared with the S&amp;P 500 over its own dates, using the bar written down in advance: at least 30 closed trades, an average trade of at least +0.3R, and a return at or above the S&amp;P 500's.</p>
   <div class="metrics-grid" id="versions-grid"></div>
 </section>
 
@@ -472,10 +472,17 @@
       if (!vs.length) { box.innerHTML = head + '<div class="empty-note">No version history yet.</div>'; el.appendChild(box); return; }
       var rows = vs.map(function (v) {
         var pct = function (x) { return x === null || x === undefined ? '—' : fmtPct(x); };
+        var usd = function (x) { return (x < 0 ? '−$' : '+$') + Math.abs(Math.round(x)).toLocaleString(); };
+        var split = function (v) {
+          if (v.trades_pl === undefined || v.trades_pl === null) return '';
+          var parts = ['trades ' + usd(v.trades_pl)];
+          if (v.core_pl) parts.push('index ' + usd(v.core_pl));
+          return '<div class="thesis" style="font-size:0.75rem;color:var(--ink-muted)">' + parts.join(' · ') + '</div>';
+        };
         var vsSpy = v.vs_spy === null || v.vs_spy === undefined ? '—' : ((v.vs_spy >= 0 ? '+' : '') + (v.vs_spy * 100).toFixed(2) + ' pts');
         return '<tr><td>' + v.version + '<div class="thesis" style="font-size:0.75rem;color:var(--ink-muted)">' + v.from + (v.to ? ' → ' + v.to : ' → now') + '</div></td>' +
           '<td class="mono">' + v.closed_trades + '</td><td class="mono">' + fmtR(v.expectancy_r) + '</td>' +
-          '<td class="mono">' + pct(v.account_return) + '</td><td class="mono">' + vsSpy + '</td><td>' + v.verdict + '</td></tr>';
+          '<td class="mono">' + pct(v.account_return) + split(v) + '</td><td class="mono">' + vsSpy + '</td><td>' + v.verdict + '</td></tr>';
       }).join('');
       box.innerHTML = head + '<table class="pos"><thead><tr><th>Version</th><th>Trades</th><th>Avg</th><th>Return</th><th>vs S&amp;P</th><th>Verdict</th></tr></thead><tbody>' + rows + '</tbody></table>';
       el.appendChild(box);
