@@ -180,7 +180,7 @@
 
 <section class="panel">
   <h2>Strategy versions</h2>
-  <p class="panel-sub">Each trade counts toward the version that opened it, for its whole life, even if it closes after a newer version starts. The index fund's gain or loss counts toward whichever version was running at the time. So the versions add up to the account. Each is compared with the S&amp;P 500 over its own dates, using the bar written down in advance: at least 30 closed trades, an average trade of at least +0.3R, and a return at or above the S&amp;P 500's.</p>
+  <p class="panel-sub">Each trade counts toward the version that opened it, for its whole life, even if it closes after a newer version starts. The index fund's gain or loss counts toward whichever version was running at the time. So the versions add up to the account. Each is compared with the S&amp;P 500 over its own dates, using the bar written down in advance: at least 30 closed trades, an average trade of at least +0.3R, and a return at or above the S&amp;P 500's. Under each average is its 95% confidence range: where the true average probably lies. While that range includes 0, the results can't yet be told apart from luck; it narrows as trades add up.</p>
   <div class="metrics-grid" id="versions-grid"></div>
 </section>
 
@@ -428,6 +428,12 @@
   }
 
   function fmtR(r) { return r === null || r === undefined ? '—' : (r >= 0 ? '+' : '') + Number(r).toFixed(2) + 'R'; }
+  // 95% confidence range for the true average trade (export_dashboard.expectancy_range).
+  function fmtRange(rg) {
+    if (!rg) return 'range: needs 3+ trades';
+    var verdict = rg[0] > 0 ? 'edge above 0' : (rg[1] < 0 ? 'losing' : "can't tell from luck yet");
+    return 'likely ' + fmtR(rg[0]) + ' to ' + fmtR(rg[1]) + ' · ' + verdict;
+  }
   function fmtRatio(v) { return v === null || v === undefined ? '—' : (v * 100).toFixed(0) + '%'; }
 
   function renderMetrics() {
@@ -446,7 +452,7 @@
         return '<div class="stat"><div class="label">' + label + '</div><div class="value mono" style="color:' + (color || 'inherit') + '">' + value + '</div>' + (hint ? '<div class="hint">' + hint + '</div>' : '') + '</div>';
       }
       box.innerHTML = head + '<div class="stats">' +
-        stat('Expectancy', fmtR(exp), 'avg R per closed trade', expColor) +
+        stat('Expectancy', fmtR(exp), 'avg R per closed trade<br>' + fmtRange(m.expectancy_range), expColor) +
         stat('Closed trades', m.closed_trades, m.wins + ' won · ' + m.losses + ' lost') +
         stat('Win rate', fmtRatio(m.win_rate), (m.exits ? m.exits.target_hit + ' targets · ' + m.exits.stopped_out + ' stops · ' + m.exits.closed_manual + ' manual' : '')) +
         stat('Realized P&L', fmtMoney(m.realized_pl), '', plColor) +
@@ -481,7 +487,7 @@
         };
         var vsSpy = v.vs_spy === null || v.vs_spy === undefined ? '—' : ((v.vs_spy >= 0 ? '+' : '') + (v.vs_spy * 100).toFixed(2) + ' pts');
         return '<tr><td>' + v.version + '<div class="thesis" style="font-size:0.75rem;color:var(--ink-muted)">' + v.from + (v.to ? ' → ' + v.to : ' → now') + '</div></td>' +
-          '<td class="mono">' + v.closed_trades + '</td><td class="mono">' + fmtR(v.expectancy_r) + '</td>' +
+          '<td class="mono">' + v.closed_trades + '</td><td class="mono">' + fmtR(v.expectancy_r) + '<div class="thesis" style="font-size:0.75rem;color:var(--ink-muted)">' + fmtRange(v.expectancy_range) + '</div></td>' +
           '<td class="mono">' + pct(v.account_return) + split(v) + '</td><td class="mono">' + vsSpy + '</td><td>' + v.verdict + '</td></tr>';
       }).join('');
       box.innerHTML = head + '<table class="pos"><thead><tr><th>Version</th><th>Trades</th><th>Avg</th><th>Return</th><th>vs S&amp;P</th><th>Verdict</th></tr></thead><tbody>' + rows + '</tbody></table>';
