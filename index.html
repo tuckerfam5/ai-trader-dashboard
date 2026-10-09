@@ -211,7 +211,7 @@
 
 <section class="panel">
   <h2>Trade log</h2>
-  <p class="panel-sub">Every order the AI actually placed (or was blocked from placing), in its own words. Click one to read the reasoning.</p>
+  <p class="panel-sub">Every order the AI actually placed (or was blocked from placing), in its own words. Click one to read the reasoning. Routine housekeeping (order cancels, fill confirmations, index-fund trades) is hidden unless you show it; anything that went wrong is always shown.</p>
   <div class="trade-log" id="trade-log"></div>
 </section>
 
@@ -455,13 +455,31 @@
   var logDays = 7;
   try { var savedDays = localStorage.getItem(LOG_RANGE_KEY); if (savedDays !== null && !isNaN(Number(savedDays))) logDays = Number(savedDays); } catch (e) {}
   function inLogRange(t) { return !logDays || new Date(t.at).getTime() >= Date.now() - logDays * 86400000; }
-  function rangeControl(shown, total) {
+  function rangeControl(shown, total, extra) {
     var opts = [[7, '1 week'], [14, '2 weeks'], [0, 'All']];
     return '<div class="range-ctl">' + opts.map(function (o) {
       return '<button type="button" class="range-btn" data-days="' + o[0] + '" aria-pressed="' + (logDays === o[0]) + '">' + o[1] + '</button>';
-    }).join('') + '<span class="count mono">showing ' + shown + ' of ' + total + '</span></div>';
+    }).join('') + (extra || '') + '<span class="count mono">showing ' + shown + ' of ' + total + '</span></div>';
   }
+
+  // Mechanical bookkeeping the system does around each decision: canceling
+  // the old stop/target before replacing it, fill confirmations, the index
+  // core's buys/sells, automatic re-protection, expired unfilled entries.
+  // Hidden by default; anything that went wrong is always shown.
+  var HOUSEKEEPING = { cancel_protective: 1, filled: 1, core_fill: 1, core_buy: 1, core_sell: 1, reprotect: 1, cancel_stale_entry: 1 };
+  var PROBLEM_STATUS = { error: 1, blocked: 1, vetoed_by_risk_manager: 1, rejected_by_validator: 1, warning: 1, partial: 1 };
+  var HOUSEKEEPING_KEY = 'aiTraderShowHousekeeping';
+  var showHousekeeping = false;
+  try { showHousekeeping = localStorage.getItem(HOUSEKEEPING_KEY) === '1'; } catch (e) {}
+  function isHousekeeping(t) { return !!HOUSEKEEPING[t.action] && !PROBLEM_STATUS[t.status]; }
   document.addEventListener('click', function (evt) {
+    var hk = evt.target.closest && evt.target.closest('.housekeeping-btn');
+    if (hk) {
+      showHousekeeping = !showHousekeeping;
+      try { localStorage.setItem(HOUSEKEEPING_KEY, showHousekeeping ? '1' : '0'); } catch (e) {}
+      renderTradeLog();
+      return;
+    }
     var btn = evt.target.closest && evt.target.closest('.range-btn');
     if (!btn) return;
     logDays = Number(btn.getAttribute('data-days'));
@@ -566,8 +584,12 @@
       el.innerHTML = '<div class="empty-note">No trades yet — the first scheduled cycle hasn\'t run.</div>';
       return;
     }
-    var all = everything.filter(inLogRange);
-    el.innerHTML = rangeControl(all.length, everything.length) +
+    var inPeriod = everything.filter(inLogRange);
+    var hidden = inPeriod.filter(isHousekeeping).length;
+    var all = showHousekeeping ? inPeriod : inPeriod.filter(function (t) { return !isHousekeeping(t); });
+    var hkBtn = '<button type="button" class="range-btn housekeeping-btn" aria-pressed="' + showHousekeeping + '" title="Order cancels, fill confirmations, index-fund buys/sells, re-protection, expired orders">' +
+      (showHousekeeping ? 'Hide' : 'Show') + ' housekeeping (' + hidden + ')</button>';
+    el.innerHTML = rangeControl(all.length, everything.length, hkBtn) +
       (all.length ? '' : '<div class="empty-note">Nothing in this period. Choose a longer range.</div>') + all.map(function (t) {
       return '<details class="trade-entry">' +
         '<summary>' +
