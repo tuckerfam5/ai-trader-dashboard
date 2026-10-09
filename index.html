@@ -158,6 +158,17 @@
   .range-ctl .count { margin-left: 4px; }
   .range-ctl .sep { width: 1px; align-self: stretch; background: var(--border); margin: 2px 4px; }
 
+  .day-group { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .day-group > summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px;
+    padding: 9px 14px; background: var(--surface-2); font-size: 0.88rem; }
+  .day-group > summary::-webkit-details-marker { display: none; }
+  .day-group > summary::before { content: '▸'; color: var(--ink-muted); width: 10px; transition: transform 0.15s; }
+  .day-group[open] > summary::before { transform: rotate(90deg); }
+  .day-group > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .day-group .day-name { font-weight: 600; }
+  .day-group .day-tally { color: var(--ink-muted); font-size: 0.8rem; }
+  .day-group .day-body { display: flex; flex-direction: column; gap: 6px; padding: 8px; }
+
   .edge-chart { position: relative; margin: 4px 0 14px; }
   .edge-chart .edge-title { font-size: 0.8rem; font-weight: 600; color: var(--ink); }
   .edge-chart .edge-sub { font-size: 0.74rem; color: var(--ink-muted); margin: 1px 0 6px; }
@@ -490,6 +501,71 @@
   var showHousekeeping = false;
   try { showHousekeeping = localStorage.getItem(HOUSEKEEPING_KEY) === '1'; } catch (e) {}
   function isHousekeeping(t) { return !!HOUSEKEEPING[t.action] && !PROBLEM_STATUS[t.status]; }
+
+  // Logs are grouped by trading day (New York time), newest first. The
+  // newest day starts open; days you open or close stay that way while you
+  // change filters (until the page reloads).
+  var NY_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+  var NY_LABEL = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric' });
+  var NY_TIME = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' });
+  function dayKey(iso) { return NY_DAY.format(new Date(iso)); }
+  function fmtTimeNY(iso) { try { return NY_TIME.format(new Date(iso)) + ' ET'; } catch (e) { return iso; } }
+  var dayOpen = { 'trade-log': {}, 'cycle-journal': {} };
+  document.addEventListener('toggle', function (evt) {
+    var g = evt.target;
+    if (!g.classList || !g.classList.contains('day-group')) return;
+    var panel = g.getAttribute('data-panel');
+    if (dayOpen[panel]) dayOpen[panel][g.getAttribute('data-day')] = g.open;
+  }, true);
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
+  function groupByDay(panel, entries, renderEntry, tally) {
+    var days = [], byDay = {};
+    entries.forEach(function (t) {
+      var k = dayKey(t.at);
+      if (!byDay[k]) { byDay[k] = []; days.push(k); }
+      byDay[k].push(t);
+    });
+    return days.map(function (k, i) {
+      var items = byDay[k];
+      var remembered = dayOpen[panel][k];
+      var open = remembered === undefined ? i === 0 : remembered;
+      return '<details class="day-group" data-panel="' + panel + '" data-day="' + k + '"' + (open ? ' open' : '') + '>' +
+        '<summary><span class="day-name">' + NY_LABEL.format(new Date(items[0].at)) + '</span>' +
+        '<span class="day-tally">' + tally(items) + '</span></summary>' +
+        '<div class="day-body">' + items.map(renderEntry).join('') + '</div></details>';
+    }).join('');
+  }
+  function tradeTally(items) {
+    var c = { buy: 0, sell: 0, raise: 0, stop: 0, target: 0, early: 0, problem: 0, other: 0 };
+    items.forEach(function (t) {
+      if (PROBLEM_STATUS[t.status]) c.problem++;
+      else if (t.action === 'enter') c.buy++;
+      else if (t.action === 'exit') c.sell++;
+      else if (t.action === 'adjust_stop') c.raise++;
+      else if (t.action === 'stopped_out') c.stop++;
+      else if (t.action === 'target_hit') c.target++;
+      else if (t.action === 'closed_manual') c.early++;
+      else c.other++;
+    });
+    var parts = [];
+    if (c.buy) parts.push(plural(c.buy, 'buy'));
+    if (c.sell) parts.push(plural(c.sell, 'sell order'));
+    if (c.raise) parts.push(plural(c.raise, 'stop raised', 'stops raised'));
+    if (c.target) parts.push(plural(c.target, 'target hit', 'targets hit'));
+    if (c.stop) parts.push(plural(c.stop, 'stopped out', 'stopped out'));
+    if (c.early) parts.push(plural(c.early, 'closed early', 'closed early'));
+    if (c.problem) parts.push(plural(c.problem, 'problem'));
+    if (c.other) parts.push(plural(c.other, 'housekeeping entry', 'housekeeping entries'));
+    return parts.join(' · ');
+  }
+  function journalTally(items) {
+    var large = items.filter(function (t) { return t.track === 'large'; }).length;
+    var small = items.length - large;
+    var parts = [];
+    if (large) parts.push('Large ' + plural(large, 'cycle'));
+    if (small) parts.push('Small ' + plural(small, 'cycle'));
+    return parts.join(' · ');
+  }
   document.addEventListener('click', function (evt) {
     var hk = evt.target.closest && evt.target.closest('.housekeeping-btn');
     if (hk) {
@@ -753,18 +829,18 @@
     var hkBtn = '<button type="button" class="range-btn housekeeping-btn" aria-pressed="' + showHousekeeping + '" title="Order cancels, fill confirmations, index-fund buys/sells, re-protection, expired orders">' +
       (showHousekeeping ? 'Hide' : 'Show') + ' housekeeping (' + hidden + ')</button>';
     el.innerHTML = rangeControl(all.length, everything.length, hkBtn) +
-      (all.length ? '' : '<div class="empty-note">Nothing in this period. Choose a longer range.</div>') + all.map(function (t) {
+      (all.length ? '' : '<div class="empty-note">Nothing in this period. Choose a longer range.</div>') + groupByDay('trade-log', all, function (t) {
       return '<details class="trade-entry">' +
         '<summary>' +
           '<span class="track-dot" style="background:' + SERIES_COLOR[t.track] + '"></span>' +
           '<span class="symbol">' + (t.symbol || '—') + '</span>' +
           '<span class="action">' + (t.action || '').replace(/_/g, ' ') + ' · ' + outcomeChip(t) + '</span>' +
-          '<span class="when mono">' + fmtWhen(t.at) + '</span>' +
+          '<span class="when mono">' + fmtTimeNY(t.at) + '</span>' +
         '</summary>' +
         '<div class="reasoning">' + (t.reasoning || t.reason || 'No reasoning recorded.') +
           (t.holding_hours !== undefined ? '<br><span class="mono" style="font-size:0.8rem;">held ' + t.holding_hours + 'h' + (t.day_trade ? ' · counted as a day trade' : '') + '</span>' : '') + '</div>' +
       '</details>';
-    }).join('');
+    }, tradeTally);
   }
 
   function renderCycleJournal() {
@@ -777,18 +853,18 @@
     }
     var all = everything.filter(function (t) { return inLogRange(t) && inLogTrack(t); });
     el.innerHTML = rangeControl(all.length, everything.length) +
-      (all.length ? '' : '<div class="empty-note">Nothing in this period. Choose a longer range.</div>') + all.map(function (t) {
+      (all.length ? '' : '<div class="empty-note">Nothing in this period. Choose a longer range.</div>') + groupByDay('cycle-journal', all, function (t) {
       return '<details class="trade-entry">' +
         '<summary>' +
           '<span class="track-dot" style="background:' + SERIES_COLOR[t.track] + '"></span>' +
           '<span class="symbol">' + SERIES_LABEL[t.track] + '</span>' +
           '<span class="action">Portfolio manager + risk manager reasoning</span>' +
-          '<span class="when mono">' + fmtWhen(t.at) + '</span>' +
+          '<span class="when mono">' + fmtTimeNY(t.at) + '</span>' +
         '</summary>' +
         '<div class="reasoning"><strong>Portfolio manager:</strong> ' + (t.portfolio_manager_reasoning || '—') +
           '<br><br><strong>Risk manager:</strong> ' + (t.risk_manager_reasoning || '—') + '</div>' +
       '</details>';
-    }).join('');
+    }, journalTally);
   }
 
   function render() {
